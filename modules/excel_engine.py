@@ -147,7 +147,7 @@ class ExcelEngine:
         ]
 
         actual_headers = [
-            sheet.cell(1, column).value
+            sheet.cell(2, column).value
             for column in range(1, 7)
         ]
 
@@ -164,7 +164,7 @@ class ExcelEngine:
         if actual_normalized != expected_normalized:
             raise ValueError(
                 "ECE master workbook must have the student detail headers "
-                "in row 1: S. No., Reg. No., Name, Deapartment, Personal email id, Phone number."
+                "in row 2: S. No., Reg. No., Name, Deapartment, Personal email id, Phone number."
             )
 
     # ==========================================================
@@ -602,19 +602,11 @@ class ExcelEngine:
 
         return start_column
 
-    def ensure_ece_detail_gap(self, sheet):
-
-        # Make room for the assessment header row without losing student rows.
-        if sheet.cell(2, 1).value is not None:
-            sheet.insert_rows(2, 1)
-
     def create_ece_assessment_block(
         self,
         sheet,
         assessment_date
     ):
-
-        self.ensure_ece_detail_gap(sheet)
 
         existing = self.find_existing_date(
             sheet,
