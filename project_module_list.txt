@@ -1,0 +1,22 @@
+AssessmentAutomation/
+│
+├── app.py
+├── config.py
+├── requirements.txt
+│
+├── modules/
+│   ├── __init__.py
+│   ├── helpers.py
+│   ├── file_parser.py
+│   ├── merger.py
+│   ├── rank_calculator.py
+│   ├── excel_processor.py
+│   ├── formatter.py
+│   ├── attendance.py
+│   ├── top_last.py
+│   ├── validator.py
+│   └── logger.py
+│
+├── output/
+├── logs/
+└── assets/
