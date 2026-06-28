@@ -9,6 +9,8 @@ from __future__ import annotations
 import re
 from decimal import Decimal, InvalidOperation
 from copy import copy
+
+import pandas as pd
 from openpyxl.utils import get_column_letter
 
 from config import *
@@ -325,6 +327,12 @@ def clean_register_number(value):
 
     if value is None:
         return ""
+
+    try:
+        if pd.isna(value):
+            return ""
+    except Exception:
+        pass
 
     text = str(value).strip()
 

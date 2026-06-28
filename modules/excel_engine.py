@@ -18,6 +18,7 @@ import openpyxl
 from openpyxl import load_workbook
 
 from config import *
+from modules.helpers import clean_register_number
 
 
 class ExcelEngine:
@@ -714,12 +715,12 @@ class ExcelEngine:
 
         for _, row in dataframe.iterrows():
 
-            reg = str(
+            reg = clean_register_number(
                 row[REGISTER_COLUMN]
             ).strip()
 
-            if reg in uploaded:
-                raise ValueError(f"Duplicate Register Number found : {reg}")
+            if not reg:
+                continue
 
             uploaded[reg] = {
 
