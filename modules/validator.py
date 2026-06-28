@@ -140,15 +140,28 @@ class Validator:
             uploaded_files
     ):
 
-        dates = {
+        dates = [
 
             file.assessment_date
 
             for file in uploaded_files
+        ]
 
-        }
+        unique_dates = set(dates)
 
-        if len(dates) > 1:
+        if len(unique_dates) == 1:
+            return dates[0]
+
+        # Numeric assessment labels like 94, 99, 104 are treated as report IDs
+        # and can be uploaded together in one run for both IT and ECE.
+        if all(
+            str(date).strip().isdigit()
+            for date in unique_dates
+        ):
+
+            return dates[0]
+
+        if len(unique_dates) > 1:
 
             raise ValidationError(
 
@@ -156,7 +169,7 @@ class Validator:
 
             )
 
-        return list(dates)[0]
+        return dates[0]
 
     # =====================================================
     # Course Validation
