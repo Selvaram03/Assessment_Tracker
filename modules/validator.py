@@ -99,24 +99,28 @@ class Validator:
             uploaded_files
     ):
 
-        batches = [
-            (file.batch, file.assessment_date)
-            for file in uploaded_files
-        ]
+        batches_by_date = {}
 
-        duplicate = [
+        for file in uploaded_files:
+            batches_by_date.setdefault(file.assessment_date, []).append(
+                file.batch
+            )
 
-            batch
-            for batch, count in Counter(batches).items()
-            if count > 1
-        ]
+        duplicate_lines = []
 
-        if duplicate:
-
-            duplicate_lines = [
-                f"{batch} @ {assessment_date}"
-                for batch, assessment_date in duplicate
+        for assessment_date, batches in batches_by_date.items():
+            duplicate_batches = [
+                batch
+                for batch, count in Counter(batches).items()
+                if count > 1
             ]
+
+            if duplicate_batches:
+                duplicate_lines.append(
+                    f"{assessment_date}: {', '.join(sorted(duplicate_batches))}"
+                )
+
+        if duplicate_lines:
 
             raise ValidationError(
 
