@@ -154,15 +154,7 @@ class AssessmentParser:
 
         }
 
-        if len(dates) != 1:
-
-            raise ValidationError(
-
-                "Uploaded files contain multiple dates."
-
-            )
-
-        return list(dates)[0]
+        return sorted(dates)
 
     # --------------------------------------------------------
 

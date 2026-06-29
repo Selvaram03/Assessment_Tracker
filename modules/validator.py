@@ -100,34 +100,29 @@ class Validator:
     ):
 
         batches = [
-
-            file.batch
-
+            (file.batch, file.assessment_date)
             for file in uploaded_files
-
         ]
 
         duplicate = [
 
             batch
-
-            for batch, count in Counter(
-
-                batches
-
-            ).items()
-
+            for batch, count in Counter(batches).items()
             if count > 1
-
         ]
 
         if duplicate:
+
+            duplicate_lines = [
+                f"{batch} @ {assessment_date}"
+                for batch, assessment_date in duplicate
+            ]
 
             raise ValidationError(
 
                 "Duplicate Batch Upload\n\n"
 
-                + ", ".join(duplicate)
+                + "\n".join(duplicate_lines)
 
             )
 
@@ -149,27 +144,7 @@ class Validator:
 
         unique_dates = set(dates)
 
-        if len(unique_dates) == 1:
-            return dates[0]
-
-        # Numeric assessment labels like 94, 99, 104 are treated as report IDs
-        # and can be uploaded together in one run for both IT and ECE.
-        if all(
-            str(date).strip().isdigit()
-            for date in unique_dates
-        ):
-
-            return dates[0]
-
-        if len(unique_dates) > 1:
-
-            raise ValidationError(
-
-                "Multiple Assessment Dates Uploaded."
-
-            )
-
-        return dates[0]
+        return sorted(unique_dates)
 
     # =====================================================
     # Course Validation
@@ -239,6 +214,8 @@ class Validator:
         return {
 
             "assessment_date": assessment_date,
+
+            "assessment_dates": assessment_date,
 
             "course": course
 

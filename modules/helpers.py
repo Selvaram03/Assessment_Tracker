@@ -37,19 +37,27 @@ def parse_filename(filename: str):
 
     name = filename.replace(".xlsx", "").replace(".xls", "")
 
-    pattern = r"Daily_Score_Report_(.*?)_([AB]\d+)_(\d{2})_(\d{2})_(\d{4})"
+    # Preferred naming format:
+    # Daily_Score_Report_<course>_<batch or batch-group>_<dd>_<mm>_<yyyy>_<id>
+    pattern = (
+        r"^Daily_Score_Report_"
+        r"(?P<course>.+?)_"
+        r"(?P<batch>(?:[AB]\d+(?:_[AB]\d+)*))_"
+        r"(?P<day>\d{2})_"
+        r"(?P<month>\d{2})_"
+        r"(?P<year>\d{4})_"
+        r"(?P<report_id>\d+)$"
+    )
 
     match = re.search(pattern, name)
 
     if match:
-        course = match.group(1).replace("_", " ").strip()
-
-        batch = match.group(2)
-
+        course = match.group("course").replace("_", " ").strip()
+        batch = match.group("batch").strip()
         assessment_date = (
-            f"{match.group(3)}-"
-            f"{match.group(4)}-"
-            f"{match.group(5)}"
+            f"{match.group('day')}-"
+            f"{match.group('month')}-"
+            f"{match.group('year')}"
         )
 
         return course, batch, assessment_date
@@ -79,13 +87,31 @@ def parse_filename(filename: str):
 
 def get_batch_type(batch: str):
 
-    batch = batch.upper()
+    batch = batch.upper().strip()
 
-    if batch.startswith("A"):
+    tokens = [
+        token
+        for token in batch.split("_")
+        if token
+    ]
+
+    if not tokens:
+        raise ValueError("Unknown Batch : empty")
+
+    token_types = {
+        token[0]
+        for token in tokens
+        if token[0] in {"A", "B"}
+    }
+
+    if token_types == {"A"}:
         return "Advanced"
 
-    if batch.startswith("B"):
+    if token_types == {"B"}:
         return "Intermediate"
+
+    if token_types == {"A", "B"}:
+        return "Mixed"
 
     raise ValueError(f"Unknown Batch : {batch}")
 

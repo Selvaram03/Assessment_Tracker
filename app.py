@@ -7,13 +7,13 @@ Main Streamlit Application
 
 from pathlib import Path
 import tempfile
+from datetime import datetime
 
 import streamlit as st
 import pandas as pd
 
 from modules.parser import AssessmentParser
 from modules.validator import Validator
-from modules.merger import Merger
 from modules.ranking import RankingEngine
 from modules.excel_engine import ExcelEngine
 
@@ -45,6 +45,39 @@ def rerun_app():
     rerun_fn()
 
 
+def parse_assessment_date(value):
+
+    text = str(value).strip()
+
+    try:
+        return datetime.strptime(text, "%d-%m-%Y")
+    except ValueError:
+        return datetime.max
+
+
+def group_files_by_date(uploaded_files):
+
+    grouped = {}
+
+    for file in uploaded_files:
+        grouped.setdefault(file.assessment_date, []).append(file)
+
+    return grouped
+
+
+def build_output_path(assessment_dates):
+
+    if not assessment_dates:
+        return OUTPUT_DIR / OUTPUT_FILENAME
+
+    if len(assessment_dates) == 1:
+        return OUTPUT_DIR / f"Assessment_{assessment_dates[0]}.xlsx"
+
+    return OUTPUT_DIR / (
+        f"Assessment_{assessment_dates[0]}_to_{assessment_dates[-1]}.xlsx"
+    )
+
+
 # ==========================================================
 # Session State
 # ==========================================================
@@ -66,6 +99,9 @@ if "combined_df" not in st.session_state:
 
 if "selected_master_type" not in st.session_state:
     st.session_state.selected_master_type = "IT"
+
+if "date_summary_df" not in st.session_state:
+    st.session_state.date_summary_df = None
 
 
 # ==========================================================
@@ -103,7 +139,8 @@ with st.sidebar:
             "intermediate_df",
             "combined_df",
             "summary",
-            "output_file"
+            "output_file",
+            "date_summary_df"
         ]:
 
             if key in st.session_state:
@@ -311,144 +348,233 @@ if generate:
             parsed_files
         )
 
-        assessment_date = validation[
-            "assessment_date"
-        ]
+        assessment_dates = sorted(
+            validation["assessment_dates"],
+            key=parse_assessment_date
+        )
 
         progress.progress(40)
 
-        output_file = OUTPUT_DIR / (
-
-            f"Assessment_"
-
-            f"{assessment_date}.xlsx"
-
-        )
+        output_file = build_output_path(assessment_dates)
 
         engine = ExcelEngine(
             master_path,
             master_type=master_type
         )
 
+        engine.load_workbook()
+        engine.create_backup()
+        engine.build_register_maps()
+
         ranking = RankingEngine()
 
-        if master_type == "ECE":
+        grouped_files = group_files_by_date(parsed_files)
+        ordered_dates = sorted(
+            grouped_files.keys(),
+            key=parse_assessment_date
+        )
+
+        summary_rows = []
+        overall_advanced = {
+            "total": 0,
+            "updated": 0,
+            "absent": 0,
+            "skipped": 0
+        }
+        overall_intermediate = {
+            "total": 0,
+            "updated": 0,
+            "absent": 0,
+            "skipped": 0
+        }
+        overall_ece = {
+            "total": 0,
+            "updated": 0,
+            "absent": 0,
+            "skipped": 0
+        }
+        advanced_preview_frames = []
+        intermediate_preview_frames = []
+        combined_preview_frames = []
+
+        for index, assessment_date in enumerate(ordered_dates, start=1):
 
             status.info(
-                "Combining ECE Files..."
+                f"Processing {assessment_date} "
+                f"({index}/{len(ordered_dates)})..."
             )
 
-            combined_df = pd.concat(
+            date_files = grouped_files[assessment_date]
+            date_df = pd.concat(
                 [
                     file.dataframe
-                    for file in parsed_files
+                    for file in date_files
                 ],
                 ignore_index=True
             )
 
-            progress.progress(55)
+            progress_value = 40 + int((index / max(len(ordered_dates), 1)) * 50)
+            progress.progress(progress_value)
 
-            status.info(
-                "Calculating Ranking..."
-            )
+            if master_type == "ECE":
 
-            combined_df = ranking.process(
-                combined_df
-            )
+                processed_df = ranking.process(
+                    date_df
+                )
 
-            progress.progress(70)
+                combined_preview_frames.append(
+                    processed_df
+                )
 
-            status.info(
-                "Updating Workbook..."
-            )
+                date_summary = engine.update_workbook(
+                    processed_df,
+                    pd.DataFrame(),
+                    assessment_date
+                )
 
-            summary = engine.process(
+                engine.update_top10(
+                    assessment_date,
+                    processed_df,
+                    pd.DataFrame()
+                )
 
-                combined_df,
+                engine.update_last10(
+                    assessment_date,
+                    processed_df,
+                    pd.DataFrame()
+                )
 
-                pd.DataFrame(),
+                ece_summary = date_summary["ECE"]
 
-                assessment_date,
+                for key in overall_ece:
+                    overall_ece[key] += ece_summary.get(key, 0)
 
-                output_file
+                summary_rows.append({
+                    "Assessment Date": assessment_date,
+                    "Students": ece_summary.get("total", 0),
+                    "Updated": ece_summary.get("updated", 0),
+                    "Absent": ece_summary.get("absent", 0),
+                    "Skipped": ece_summary.get("skipped", 0),
+                })
 
-            )
+            else:
 
-            st.session_state.combined_df = combined_df
+                advanced_df, intermediate_df, unmatched_df = (
+                    engine.split_uploaded_dataframe(
+                        date_df
+                    )
+                )
+
+                advanced_df = ranking.process(
+                    advanced_df
+                )
+
+                intermediate_df = ranking.process(
+                    intermediate_df
+                )
+
+                advanced_preview_frames.append(
+                    advanced_df
+                )
+
+                intermediate_preview_frames.append(
+                    intermediate_df
+                )
+
+                date_summary = engine.update_workbook(
+                    advanced_df,
+                    intermediate_df,
+                    assessment_date
+                )
+
+                engine.update_top10(
+                    assessment_date,
+                    advanced_df,
+                    intermediate_df
+                )
+
+                engine.update_last10(
+                    assessment_date,
+                    advanced_df,
+                    intermediate_df
+                )
+
+                advanced_summary = date_summary["Advanced"]
+                intermediate_summary = date_summary["Intermediate"]
+
+                for key in overall_advanced:
+                    overall_advanced[key] += advanced_summary.get(key, 0)
+
+                for key in overall_intermediate:
+                    overall_intermediate[key] += intermediate_summary.get(key, 0)
+
+                summary_rows.append({
+                    "Assessment Date": assessment_date,
+                    "Advanced Students": advanced_summary.get("total", 0),
+                    "Advanced Updated": advanced_summary.get("updated", 0),
+                    "Advanced Absent": advanced_summary.get("absent", 0),
+                    "Advanced Skipped": advanced_summary.get("skipped", 0),
+                    "Intermediate Students": intermediate_summary.get("total", 0),
+                    "Intermediate Updated": intermediate_summary.get("updated", 0),
+                    "Intermediate Absent": intermediate_summary.get("absent", 0),
+                    "Intermediate Skipped": intermediate_summary.get("skipped", 0),
+                    "Unmatched Rows": len(unmatched_df),
+                })
+
+            progress.progress(progress_value)
+
+        if master_type == "ECE":
+
+            summary = {
+                "ECE": overall_ece
+            }
+
+            if combined_preview_frames:
+                st.session_state.combined_df = pd.concat(
+                    combined_preview_frames,
+                    ignore_index=True
+                )
+            else:
+                st.session_state.combined_df = None
+
             st.session_state.advanced_df = None
             st.session_state.intermediate_df = None
 
+            skipped_total = overall_ece["skipped"]
+
         else:
 
-            # ---------------------------------------
-            # Merge
-            # ---------------------------------------
+            summary = {
+                "Advanced": overall_advanced,
+                "Intermediate": overall_intermediate
+            }
 
-            status.info(
-                "Merging Files..."
-            )
-
-            merger = Merger()
-
-            advanced_df, intermediate_df = (
-
-                merger.merge(
-
-                    parsed_files
-
+            if advanced_preview_frames:
+                st.session_state.advanced_df = pd.concat(
+                    advanced_preview_frames,
+                    ignore_index=True
                 )
+            else:
+                st.session_state.advanced_df = None
 
-            )
-
-            progress.progress(55)
-
-            # ---------------------------------------
-            # Ranking
-            # ---------------------------------------
-
-            status.info(
-                "Calculating Ranking..."
-            )
-
-            advanced_df = ranking.process(
-                advanced_df
-            )
-
-            intermediate_df = ranking.process(
-                intermediate_df
-            )
-
-            progress.progress(70)
-
-            # ---------------------------------------
-            # Excel Processing
-            # ---------------------------------------
-
-            status.info(
-                "Updating Workbook..."
-            )
-
-            summary = engine.process(
-
-                advanced_df,
-
-                intermediate_df,
-
-                assessment_date,
-
-                output_file
-
-            )
-
-            st.session_state.advanced_df = (
-                advanced_df
-            )
-
-            st.session_state.intermediate_df = (
-                intermediate_df
-            )
+            if intermediate_preview_frames:
+                st.session_state.intermediate_df = pd.concat(
+                    intermediate_preview_frames,
+                    ignore_index=True
+                )
+            else:
+                st.session_state.intermediate_df = None
 
             st.session_state.combined_df = None
+
+            skipped_total = (
+                overall_advanced["skipped"]
+                + overall_intermediate["skipped"]
+            )
+
+        engine.save_workbook(
+            output_file
+        )
 
         progress.progress(100)
 
@@ -457,19 +583,9 @@ if generate:
         # ---------------------------------------
 
         st.session_state.summary = summary
+        st.session_state.date_summary_df = pd.DataFrame(summary_rows)
 
         st.session_state.output_file = output_file
-
-        if master_type == "ECE":
-
-            skipped_total = summary.get("ECE", {}).get("skipped", 0)
-
-        else:
-
-            skipped_total = sum(
-                summary.get(section, {}).get("skipped", 0)
-                for section in ("Advanced", "Intermediate")
-            )
 
         if skipped_total:
 
@@ -479,7 +595,7 @@ if generate:
             )
 
         status.success(
-            "Workbook Generated Successfully."
+            f"Workbook Generated Successfully for {len(ordered_dates)} date(s)."
         )
 
     except Exception as error:
@@ -589,6 +705,20 @@ if st.session_state.summary:
                 st.session_state.summary["Intermediate"]["absent"]
 
             )
+
+    if st.session_state.date_summary_df is not None and not st.session_state.date_summary_df.empty:
+
+        st.caption("Date-wise summary")
+
+        st.dataframe(
+
+            st.session_state.date_summary_df,
+
+            use_container_width=True,
+
+            hide_index=True
+
+        )
 
 
 
@@ -710,6 +840,8 @@ if st.button(
         "intermediate_df",
 
         "summary",
+
+        "date_summary_df",
 
         "output_file"
 

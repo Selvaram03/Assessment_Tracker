@@ -42,6 +42,9 @@ class ExcelEngine:
         self.intermediate_map = {}
         self.main_map = {}
 
+        self.top_sheet_by_date = {}
+        self.last_sheet_by_date = {}
+
     # ==========================================================
     # Load Workbook
     # ==========================================================
@@ -282,6 +285,88 @@ class ExcelEngine:
         self.intermediate_map = self.build_register_map(
             self.intermediate_sheet
         )
+
+    # ==========================================================
+    # Split Uploaded Data by Master Sheet
+    # ==========================================================
+
+    def split_uploaded_dataframe(self, dataframe):
+
+        if dataframe.empty:
+            return dataframe, dataframe, dataframe
+
+        if self.is_ece:
+            return dataframe.copy(), pd.DataFrame(), pd.DataFrame()
+
+        df = dataframe.copy()
+
+        df[REGISTER_COLUMN] = (
+            df[REGISTER_COLUMN]
+            .apply(clean_register_number)
+            .astype(str)
+            .str.strip()
+        )
+
+        advanced_registers = set(self.advanced_map.keys())
+        intermediate_registers = set(self.intermediate_map.keys())
+
+        advanced_df = df[
+            df[REGISTER_COLUMN].isin(advanced_registers)
+        ].copy()
+
+        intermediate_df = df[
+            df[REGISTER_COLUMN].isin(intermediate_registers)
+        ].copy()
+
+        unmatched_df = df[
+            ~df[REGISTER_COLUMN].isin(
+                advanced_registers | intermediate_registers
+            )
+        ].copy()
+
+        return advanced_df, intermediate_df, unmatched_df
+
+    # ==========================================================
+    # Performer Sheet Selection
+    # ==========================================================
+
+    def get_date_specific_sheet(
+        self,
+        base_sheet,
+        sheet_prefix,
+        assessment_date,
+        cache
+    ):
+
+        if base_sheet is None:
+            return None
+
+        if assessment_date in cache:
+            return cache[assessment_date]
+
+        if not cache:
+            cache[assessment_date] = base_sheet
+            return base_sheet
+
+        date_text = self.format_assessment_date(
+            assessment_date
+        ) or str(assessment_date).strip()
+
+        sheet_name = f"{sheet_prefix} - {date_text}"
+        suffix = 2
+
+        while sheet_name in self.workbook.sheetnames:
+            sheet_name = f"{sheet_prefix} - {date_text} ({suffix})"
+            suffix += 1
+
+        cloned_sheet = self.workbook.copy_worksheet(
+            base_sheet
+        )
+        cloned_sheet.title = sheet_name
+
+        cache[assessment_date] = cloned_sheet
+
+        return cloned_sheet
 
     # ==========================================================
     # Copy Cell Style
@@ -1084,18 +1169,25 @@ class ExcelEngine:
                 advanced_df
             )
 
-        if self.top_sheet is None:
+        sheet = self.get_date_specific_sheet(
+            self.top_sheet,
+            TOP10_SHEET,
+            assessment_date,
+            self.top_sheet_by_date
+        )
+
+        if sheet is None:
             return
 
         date_value = self.parse_assessment_date(
             assessment_date
         )
 
-        self.top_sheet.cell(1, 2).value = date_value
-        self.top_sheet.cell(1, 9).value = date_value
+        sheet.cell(1, 2).value = date_value
+        sheet.cell(1, 9).value = date_value
 
         self.write_performer_block(
-            self.top_sheet,
+            sheet,
             3,
             "Advanced",
             advanced_df,
@@ -1103,7 +1195,7 @@ class ExcelEngine:
         )
 
         self.write_performer_block(
-            self.top_sheet,
+            sheet,
             14,
             "Intermediate",
             intermediate_df,
@@ -1112,17 +1204,24 @@ class ExcelEngine:
 
     def update_top10_ece(self, assessment_date, dataframe):
 
-        if self.top_sheet is None:
+        sheet = self.get_date_specific_sheet(
+            self.top_sheet,
+            TOP10_SHEET,
+            assessment_date,
+            self.top_sheet_by_date
+        )
+
+        if sheet is None:
             return
 
         date_value = self.parse_assessment_date(
             assessment_date
         )
 
-        self.top_sheet.cell(1, 2).value = date_value
+        sheet.cell(1, 2).value = date_value
 
         self.write_performer_block(
-            self.top_sheet,
+            sheet,
             3,
             "ECE",
             dataframe,
@@ -1146,18 +1245,25 @@ class ExcelEngine:
                 advanced_df
             )
 
-        if self.last_sheet is None:
+        sheet = self.get_date_specific_sheet(
+            self.last_sheet,
+            LAST10_SHEET,
+            assessment_date,
+            self.last_sheet_by_date
+        )
+
+        if sheet is None:
             return
 
         date_value = self.parse_assessment_date(
             assessment_date
         )
 
-        self.last_sheet.cell(1, 2).value = date_value
-        self.last_sheet.cell(1, 9).value = date_value
+        sheet.cell(1, 2).value = date_value
+        sheet.cell(1, 9).value = date_value
 
         self.write_performer_block(
-            self.last_sheet,
+            sheet,
             3,
             "Advanced",
             advanced_df,
@@ -1165,7 +1271,7 @@ class ExcelEngine:
         )
 
         self.write_performer_block(
-            self.last_sheet,
+            sheet,
             14,
             "Intermediate",
             intermediate_df,
@@ -1174,17 +1280,24 @@ class ExcelEngine:
 
     def update_last10_ece(self, assessment_date, dataframe):
 
-        if self.last_sheet is None:
+        sheet = self.get_date_specific_sheet(
+            self.last_sheet,
+            LAST10_SHEET,
+            assessment_date,
+            self.last_sheet_by_date
+        )
+
+        if sheet is None:
             return
 
         date_value = self.parse_assessment_date(
             assessment_date
         )
 
-        self.last_sheet.cell(1, 2).value = date_value
+        sheet.cell(1, 2).value = date_value
 
         self.write_performer_block(
-            self.last_sheet,
+            sheet,
             3,
             "ECE",
             dataframe,
