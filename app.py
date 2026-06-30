@@ -200,7 +200,7 @@ col1, col2 = st.columns(2)
 
 with col1:
 
-    master_file_types = ["xlsx", "csv"] if master_type == "SSCET" else ["xlsx"]
+    master_file_types = ["xlsx"]
 
     master_file = st.file_uploader(
 
