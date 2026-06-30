@@ -23,7 +23,7 @@ ECE_MASTER_TEMPLATE_PATH = ROOT_DIR / "assets" / ECE_MASTER_TEMPLATE_NAME
 SSCET_MASTER_TEMPLATE_NAME = "Students_Roster_SSCET.csv"
 SSCET_MASTER_TEMPLATE_PATH = ROOT_DIR / "assets" / SSCET_MASTER_TEMPLATE_NAME
 ECE_MAIN_SHEET_NAME = "Sheet1"
-SSCET_MAIN_SHEET_NAME = "Shanmuga College"
+SSCET_MAIN_SHEET_NAME = "Students_Roster_SSCET"
 
 SSCET_DISPLAY_NAME = "Shanmuga College"
 SSCET_ROSTER_COLUMNS = [
@@ -65,8 +65,8 @@ MASTER_PROFILES = {
         "mode": "combined",
         "source_kind": "tabular",
         "main_sheet_name": SSCET_MAIN_SHEET_NAME,
-        "detail_header_row": 1,
-        "detail_data_start_row": 2,
+        "detail_header_row": 2,
+        "detail_data_start_row": 3,
         "assessment_header_row": 2,
         "assessment_start_column": 7,
         "register_column_index": 3,

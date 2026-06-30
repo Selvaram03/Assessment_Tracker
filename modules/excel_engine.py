@@ -40,6 +40,10 @@ class ExcelEngine:
             "main_sheet_name",
             "Sheet1"
         )
+        self.detail_header_row = self.profile.get(
+            "detail_header_row",
+            1
+        )
         self.assessment_start_column = self.profile.get(
             "assessment_start_column",
             FIRST_ASSESSMENT_COLUMN
@@ -122,10 +126,18 @@ class ExcelEngine:
                 + ", ".join(missing)
             )
 
-        for column_index, header in enumerate(roster_columns, start=1):
-            main_sheet.cell(1, column_index).value = header
+        title_row = 1 if self.detail_header_row > 1 else None
 
-        for row_index, (_, row) in enumerate(dataframe.iterrows(), start=2):
+        if title_row is not None:
+            main_sheet.cell(title_row, 1).value = self.combined_label
+
+        for column_index, header in enumerate(roster_columns, start=1):
+            main_sheet.cell(self.detail_header_row, column_index).value = header
+
+        for row_index, (_, row) in enumerate(
+            dataframe.iterrows(),
+            start=self.detail_data_start_row
+        ):
             for column_index, header in enumerate(roster_columns, start=1):
                 main_sheet.cell(
                     row=row_index,
