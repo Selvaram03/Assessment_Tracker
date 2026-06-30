@@ -15,7 +15,8 @@ from datetime import datetime
 from pathlib import Path
 
 import openpyxl
-from openpyxl import load_workbook
+import pandas as pd
+from openpyxl import Workbook, load_workbook
 
 from config import *
 from modules.helpers import clean_register_number
@@ -27,7 +28,35 @@ class ExcelEngine:
 
         self.workbook_path = Path(workbook_path)
         self.master_type = str(master_type).upper()
+        self.profile = MASTER_PROFILES.get(
+            self.master_type,
+            {}
+        )
+        self.mode = self.profile.get("mode", "split")
+        self.source_kind = self.profile.get("source_kind", "workbook")
+        self.is_combined = self.mode == "combined"
         self.is_ece = self.master_type == "ECE"
+        self.main_sheet_name = self.profile.get(
+            "main_sheet_name",
+            "Sheet1"
+        )
+        self.assessment_start_column = self.profile.get(
+            "assessment_start_column",
+            FIRST_ASSESSMENT_COLUMN
+        )
+        self.detail_data_start_row = self.profile.get(
+            "detail_data_start_row",
+            DATA_START_ROW
+        )
+        self.register_column_index = self.profile.get(
+            "register_column_index",
+            REGISTER_COLUMN_INDEX
+        )
+        self.combined_label = self.profile.get(
+            "combined_label",
+            self.master_type
+        )
+        self.roster_columns = self.profile.get("roster_columns")
 
         self.workbook = None
 
@@ -46,10 +75,94 @@ class ExcelEngine:
         self.last_sheet_by_date = {}
 
     # ==========================================================
+    # Sheet Helpers
+    # ==========================================================
+
+    def initialize_performer_sheet(self, sheet, title):
+
+        sheet.title = title
+        sheet.cell(1, 1).value = title
+
+        return sheet
+
+    def create_tabular_master_workbook(self):
+
+        workbook = Workbook()
+        main_sheet = workbook.active
+        main_sheet.title = self.main_sheet_name
+
+        source_suffix = self.workbook_path.suffix.lower()
+
+        if source_suffix == ".csv":
+            dataframe = pd.read_csv(self.workbook_path)
+        else:
+            dataframe = pd.read_excel(self.workbook_path)
+
+        dataframe.columns = [
+            str(column).strip()
+            for column in dataframe.columns
+        ]
+
+        if REGISTER_COLUMN not in dataframe.columns:
+            raise ValueError(
+                f"Master roster file must contain '{REGISTER_COLUMN}'."
+            )
+
+        roster_columns = self.roster_columns or list(dataframe.columns)
+
+        missing = [
+            column
+            for column in roster_columns
+            if column not in dataframe.columns
+        ]
+
+        if missing:
+            raise ValueError(
+                "Master roster file is missing required columns: "
+                + ", ".join(missing)
+            )
+
+        for column_index, header in enumerate(roster_columns, start=1):
+            main_sheet.cell(1, column_index).value = header
+
+        for row_index, (_, row) in enumerate(dataframe.iterrows(), start=2):
+            for column_index, header in enumerate(roster_columns, start=1):
+                main_sheet.cell(
+                    row=row_index,
+                    column=column_index
+                ).value = row.get(header, "")
+
+        self.initialize_performer_sheet(
+            workbook.create_sheet(TOP10_SHEET),
+            TOP10_SHEET
+        )
+
+        self.initialize_performer_sheet(
+            workbook.create_sheet(LAST10_SHEET),
+            LAST10_SHEET
+        )
+
+        return workbook
+
+    # ==========================================================
     # Load Workbook
     # ==========================================================
 
     def load_workbook(self):
+
+        if self.source_kind == "tabular":
+
+            self.workbook = self.create_tabular_master_workbook()
+
+            self.main_sheet = self.workbook[self.main_sheet_name]
+
+            if TOP10_SHEET in self.workbook.sheetnames:
+                self.top_sheet = self.workbook[TOP10_SHEET]
+
+            if LAST10_SHEET in self.workbook.sheetnames:
+                self.last_sheet = self.workbook[LAST10_SHEET]
+
+            return
 
         self.workbook = load_workbook(
             self.workbook_path
@@ -87,6 +200,10 @@ class ExcelEngine:
 
     def validate_workbook_template(self):
 
+        if self.source_kind == "tabular":
+            self.validate_tabular_master_template()
+            return
+
         if self.is_ece:
             self.validate_ece_workbook_template()
             return
@@ -123,6 +240,30 @@ class ExcelEngine:
                     f"{sheet_name} must contain a seed assessment block "
                     f"merged across columns G:K in row {DATE_ROW}."
                 )
+
+    def validate_tabular_master_template(self):
+
+        if not self.workbook_path.exists():
+            raise ValueError(
+                f"Master roster file not found at {self.workbook_path}."
+            )
+
+        source_suffix = self.workbook_path.suffix.lower()
+
+        if source_suffix == ".csv":
+            dataframe = pd.read_csv(self.workbook_path)
+        else:
+            dataframe = pd.read_excel(self.workbook_path)
+
+        dataframe.columns = [
+            str(column).strip()
+            for column in dataframe.columns
+        ]
+
+        if REGISTER_COLUMN not in dataframe.columns:
+            raise ValueError(
+                f"Master roster file must contain '{REGISTER_COLUMN}'."
+            )
 
     def normalize_header(self, value):
         if value is None:
@@ -222,8 +363,11 @@ class ExcelEngine:
         )
 
         backup_name = datetime.now().strftime(
-            "Master_Backup_%Y%m%d_%H%M%S.xlsx"
+            "Master_Backup_%Y%m%d_%H%M%S"
         )
+
+        backup_suffix = self.workbook_path.suffix or ".xlsx"
+        backup_name = f"{backup_name}{backup_suffix}"
 
         backup_path = BACKUP_DIR / backup_name
 
@@ -238,9 +382,19 @@ class ExcelEngine:
     # Register Mapping
     # ==========================================================
 
-    def build_register_map(self, sheet, start_row=DATA_START_ROW):
+    def build_register_map(
+        self,
+        sheet,
+        start_row=DATA_START_ROW,
+        register_column_index=None
+    ):
 
         register_map = {}
+        register_column_index = (
+            register_column_index
+            if register_column_index is not None
+            else self.register_column_index
+        )
 
         for row in range(
             start_row,
@@ -249,7 +403,7 @@ class ExcelEngine:
 
             reg = sheet.cell(
                 row=row,
-                column=REGISTER_COLUMN_INDEX
+                column=register_column_index
             ).value
 
             if reg is None:
@@ -270,10 +424,11 @@ class ExcelEngine:
 
     def build_register_maps(self):
 
-        if self.is_ece:
+        if self.is_combined:
             self.main_map = self.build_register_map(
                 self.main_sheet,
-                start_row=3
+                start_row=self.detail_data_start_row,
+                register_column_index=self.register_column_index
             )
 
             return
@@ -295,7 +450,7 @@ class ExcelEngine:
         if dataframe.empty:
             return dataframe, dataframe, dataframe
 
-        if self.is_ece:
+        if self.is_combined:
             return dataframe.copy(), pd.DataFrame(), pd.DataFrame()
 
         df = dataframe.copy()
@@ -435,7 +590,7 @@ class ExcelEngine:
         sheet
     ):
 
-        last = FIRST_ASSESSMENT_COLUMN - DATE_BLOCK_SIZE
+        last = self.assessment_start_column - DATE_BLOCK_SIZE
 
         for merged in sheet.merged_cells.ranges:
 
@@ -490,7 +645,7 @@ class ExcelEngine:
             if merged.min_row != DATE_ROW:
                 continue
 
-            if merged.min_col < FIRST_ASSESSMENT_COLUMN:
+            if merged.min_col < self.assessment_start_column:
                 continue
 
             value = sheet.cell(
@@ -514,8 +669,8 @@ class ExcelEngine:
 
         last_column = self.find_last_assessment_column(sheet)
 
-        if last_column < FIRST_ASSESSMENT_COLUMN:
-            return FIRST_ASSESSMENT_COLUMN
+        if last_column < self.assessment_start_column:
+            return self.assessment_start_column
 
         return last_column + 1
 
@@ -602,7 +757,7 @@ class ExcelEngine:
         assessment_date
     ):
 
-        if self.is_ece:
+        if self.is_combined:
             return self.create_ece_assessment_block(
                 sheet,
                 assessment_date
@@ -712,9 +867,9 @@ class ExcelEngine:
 
         last_column = self.find_last_assessment_column(sheet)
 
-        if last_column < FIRST_ASSESSMENT_COLUMN:
+        if last_column < self.assessment_start_column:
 
-            start_column = FIRST_ASSESSMENT_COLUMN
+            start_column = self.assessment_start_column
 
             sheet.merge_cells(
                 start_row=1,
@@ -771,7 +926,7 @@ class ExcelEngine:
         assessment_date
     ):
 
-        if self.is_ece:
+        if self.is_combined:
             return self.create_assessment_block(
                 self.main_sheet,
                 assessment_date
@@ -981,7 +1136,7 @@ class ExcelEngine:
 
         )
 
-    def update_ece_sheet(
+    def update_combined_sheet(
             self,
             dataframe,
             start_column
@@ -1016,7 +1171,7 @@ class ExcelEngine:
 
     ):
 
-        if self.is_ece:
+        if self.is_combined:
 
             start_column = self.prepare_workbook(
                 assessment_date
@@ -1024,7 +1179,7 @@ class ExcelEngine:
 
             self.build_register_maps()
 
-            ece_summary = self.update_ece_sheet(
+            combined_summary = self.update_combined_sheet(
 
                 advanced_df,
 
@@ -1033,7 +1188,7 @@ class ExcelEngine:
             )
 
             return {
-                "ECE": ece_summary
+                self.master_type: combined_summary
             }
 
         advanced_column, intermediate_column = \
@@ -1163,7 +1318,7 @@ class ExcelEngine:
             intermediate_df
     ):
 
-        if self.is_ece:
+        if self.is_combined:
             return self.update_top10_ece(
                 assessment_date,
                 advanced_df
@@ -1223,7 +1378,7 @@ class ExcelEngine:
         self.write_performer_block(
             sheet,
             3,
-            "ECE",
+            self.combined_label,
             dataframe,
             top=True
         )
@@ -1239,7 +1394,7 @@ class ExcelEngine:
             intermediate_df
     ):
 
-        if self.is_ece:
+        if self.is_combined:
             return self.update_last10_ece(
                 assessment_date,
                 advanced_df
@@ -1299,7 +1454,7 @@ class ExcelEngine:
         self.write_performer_block(
             sheet,
             3,
-            "ECE",
+            self.combined_label,
             dataframe,
             top=False
         )
@@ -1350,7 +1505,7 @@ class ExcelEngine:
 
         self.create_backup()
 
-        if self.is_ece:
+        if self.is_combined:
 
             summary = self.update_workbook(
 

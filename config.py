@@ -20,26 +20,58 @@ MASTER_TEMPLATE_NAME = "RIT_Portal login-Assessment_2026-2027_Master.xlsx"
 MASTER_TEMPLATE_PATH = ROOT_DIR / "assets" / MASTER_TEMPLATE_NAME
 ECE_MASTER_TEMPLATE_NAME = "ECE - Batch (2023-27) - Portal login-Assessment.xlsx"
 ECE_MASTER_TEMPLATE_PATH = ROOT_DIR / "assets" / ECE_MASTER_TEMPLATE_NAME
+SSCET_MASTER_TEMPLATE_NAME = "Students_Roster_SSCET.csv"
+SSCET_MASTER_TEMPLATE_PATH = ROOT_DIR / "assets" / SSCET_MASTER_TEMPLATE_NAME
 ECE_MAIN_SHEET_NAME = "Sheet1"
+SSCET_MAIN_SHEET_NAME = "Shanmuga College"
+
+SSCET_DISPLAY_NAME = "Shanmuga College"
+SSCET_ROSTER_COLUMNS = [
+    "Full Name",
+    "Email",
+    "Register Number",
+    "Department",
+    "Batch",
+    "Year",
+]
 
 MASTER_TEMPLATES = {
     "IT": MASTER_TEMPLATE_PATH,
     "ECE": ECE_MASTER_TEMPLATE_PATH,
+    "SSCET": SSCET_MASTER_TEMPLATE_PATH,
 }
 
 MASTER_PROFILES = {
     "IT": {
         "template_path": MASTER_TEMPLATE_PATH,
         "mode": "split",
+        "source_kind": "workbook",
+        "register_column_index": 2,
     },
     "ECE": {
         "template_path": ECE_MASTER_TEMPLATE_PATH,
         "mode": "combined",
+        "source_kind": "workbook",
         "main_sheet_name": ECE_MAIN_SHEET_NAME,
         "detail_header_row": 2,
         "detail_data_start_row": 3,
         "assessment_header_row": 2,
         "assessment_start_column": 7,
+        "register_column_index": 2,
+        "combined_label": "ECE",
+    },
+    "SSCET": {
+        "template_path": SSCET_MASTER_TEMPLATE_PATH,
+        "mode": "combined",
+        "source_kind": "tabular",
+        "main_sheet_name": SSCET_MAIN_SHEET_NAME,
+        "detail_header_row": 1,
+        "detail_data_start_row": 2,
+        "assessment_header_row": 2,
+        "assessment_start_column": 7,
+        "register_column_index": 3,
+        "combined_label": SSCET_DISPLAY_NAME,
+        "roster_columns": SSCET_ROSTER_COLUMNS,
     },
 }
 

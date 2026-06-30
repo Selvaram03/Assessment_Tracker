@@ -7,16 +7,12 @@ AssessmentAutomation/
 ├── modules/
 │   ├── __init__.py
 │   ├── helpers.py
-│   ├── file_parser.py
-│   ├── merger.py
-│   ├── rank_calculator.py
-│   ├── excel_processor.py
-│   ├── formatter.py
-│   ├── attendance.py
-│   ├── top_last.py
+│   ├── parser.py
 │   ├── validator.py
-│   └── logger.py
+│   ├── ranking.py
+│   ├── excel_engine.py
+│   └── merger.py
 │
+├── backup/
 ├── output/
-├── logs/
-└── assets/
+└── logs/

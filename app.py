@@ -19,6 +19,14 @@ from modules.excel_engine import ExcelEngine
 
 from config import *
 
+MASTER_DISPLAY_TO_KEY = {
+    "IT": "IT",
+    "ECE": "ECE",
+    "Shanmuga College": "SSCET",
+}
+
+COMBINED_MASTER_TYPES = {"ECE", "SSCET"}
+
 
 # ==========================================================
 # Page Configuration
@@ -126,11 +134,13 @@ with st.sidebar:
 
     st.header("Project Information")
 
-    master_type = st.selectbox(
+    master_display_name = st.selectbox(
         "Select Master",
-        ["IT", "ECE"],
+        list(MASTER_DISPLAY_TO_KEY.keys()),
         index=0
     )
+
+    master_type = MASTER_DISPLAY_TO_KEY[master_display_name]
 
     if st.session_state.selected_master_type != master_type:
 
@@ -190,11 +200,13 @@ col1, col2 = st.columns(2)
 
 with col1:
 
+    master_file_types = ["xlsx", "csv"] if master_type == "SSCET" else ["xlsx"]
+
     master_file = st.file_uploader(
 
-        f"Upload {master_type} Master Workbook (optional)",
+        f"Upload {master_display_name} Master File (optional)",
 
-        type=["xlsx"],
+        type=master_file_types,
 
         accept_multiple_files=False
 
@@ -301,14 +313,12 @@ if generate:
 
         else:
 
-            master_path = MASTER_TEMPLATES[
-                master_type
-            ]
+            master_path = MASTER_TEMPLATES[master_type]
 
             if not master_path.exists():
 
                 st.error(
-                    f"{master_type} master template not found at {master_path}. "
+                    f"{master_display_name} master template not found at {master_path}. "
                     "Upload the selected master workbook or place the template there."
                 )
 
@@ -387,7 +397,7 @@ if generate:
             "absent": 0,
             "skipped": 0
         }
-        overall_ece = {
+        overall_combined = {
             "total": 0,
             "updated": 0,
             "absent": 0,
@@ -416,7 +426,7 @@ if generate:
             progress_value = 40 + int((index / max(len(ordered_dates), 1)) * 50)
             progress.progress(progress_value)
 
-            if master_type == "ECE":
+            if master_type in COMBINED_MASTER_TYPES:
 
                 processed_df = ranking.process(
                     date_df
@@ -444,17 +454,17 @@ if generate:
                     pd.DataFrame()
                 )
 
-                ece_summary = date_summary["ECE"]
+                combined_summary = date_summary[master_type]
 
-                for key in overall_ece:
-                    overall_ece[key] += ece_summary.get(key, 0)
+                for key in overall_combined:
+                    overall_combined[key] += combined_summary.get(key, 0)
 
                 summary_rows.append({
                     "Assessment Date": assessment_date,
-                    "Students": ece_summary.get("total", 0),
-                    "Updated": ece_summary.get("updated", 0),
-                    "Absent": ece_summary.get("absent", 0),
-                    "Skipped": ece_summary.get("skipped", 0),
+                    "Students": combined_summary.get("total", 0),
+                    "Updated": combined_summary.get("updated", 0),
+                    "Absent": combined_summary.get("absent", 0),
+                    "Skipped": combined_summary.get("skipped", 0),
                 })
 
             else:
@@ -523,10 +533,10 @@ if generate:
 
             progress.progress(progress_value)
 
-        if master_type == "ECE":
+        if master_type in COMBINED_MASTER_TYPES:
 
             summary = {
-                "ECE": overall_ece
+                master_type: overall_combined
             }
 
             if combined_preview_frames:
@@ -540,7 +550,7 @@ if generate:
             st.session_state.advanced_df = None
             st.session_state.intermediate_df = None
 
-            skipped_total = overall_ece["skipped"]
+            skipped_total = overall_combined["skipped"]
 
         else:
 
@@ -616,17 +626,17 @@ if st.session_state.summary:
 
     st.subheader("Processing Summary")
 
-    if master_type == "ECE":
+    if master_type in COMBINED_MASTER_TYPES:
 
-        ece_summary = st.session_state.summary["ECE"]
+        combined_summary = st.session_state.summary[master_type]
 
-        st.success("ECE")
+        st.success(master_display_name)
 
         st.metric(
 
             "Students",
 
-            ece_summary["total"]
+            combined_summary["total"]
 
         )
 
@@ -634,7 +644,7 @@ if st.session_state.summary:
 
             "Updated",
 
-            ece_summary["updated"]
+            combined_summary["updated"]
 
         )
 
@@ -642,7 +652,7 @@ if st.session_state.summary:
 
             "Absent",
 
-            ece_summary["absent"]
+            combined_summary["absent"]
 
         )
 
@@ -726,12 +736,12 @@ if st.session_state.summary:
 # Preview Data
 # ==========================================================
 
-if master_type == "ECE" and st.session_state.combined_df is not None:
+if master_type in COMBINED_MASTER_TYPES and st.session_state.combined_df is not None:
 
     st.divider()
 
     with st.expander(
-        "ECE Preview",
+        f"{master_display_name} Preview",
         expanded=False
     ):
 
